@@ -67,7 +67,7 @@ async function isInstalled(binaryPath: string): Promise<boolean> {
 }
 
 async function getVersion(binary: string): Promise<string | undefined> {
-  const r = await execa.command(`${binary} version`);
+  const r = await execa.command(`${binary} version`, {shell: true});
   if (r.failed) {
     console.error(`okteto version failed: ${r.stdout} ${r.stderr}`);
     return undefined;
@@ -110,7 +110,7 @@ export async function install() {
       return;
     }
 
-    const r = await execa.command(`chmod +x ${destination}`);
+    const r = await execa.command(`chmod +x ${destination}`, {shell: true});
     if (r.failed) {
       console.error(`chmod +x ${destination} failed: ${r.stdout} ${r.stderr}`);
       throw new Error(`failed to set exec permissions; ${r.stdout}`);
@@ -136,10 +136,7 @@ function downloadFile(source: string, destination: string) {
   });
 }
 
-export function up(manifest: string, namespace: string, name: string, port: number, kubeconfig: string) {
-  console.log(`okteto up ${manifest}`);
-  disposeTerminal();
-  cleanState(namespace, name);
+function getTerminal(manifest: string, kubeconfig: string):vscode.Terminal {
   const term = vscode.window.createTerminal({
     name: terminalName,
     hideFromUser: false,
@@ -151,6 +148,12 @@ export function up(manifest: string, namespace: string, name: string, port: numb
     }
   });
 
+  return term;
+}
+export function up(manifest: string, namespace: string, name: string, port: number, kubeconfig: string) {
+  console.log(`okteto up ${manifest}`);
+  disposeTerminal();
+  cleanState(namespace, name);
 
   let binary = getBinary();
   if (gitBashMode()){
@@ -161,7 +164,9 @@ export function up(manifest: string, namespace: string, name: string, port: numb
 
   const cmd = `${binary} up -f ${manifest} --remote ${port}`;
   console.log(cmd);
+  const term = getTerminal(manifest, kubeconfig);
   term.sendText(cmd, true);
+  console.log('okteto up started');
 }
 
 export async function down(manifest: string, namespace: string, kubeconfig: string) {
@@ -169,11 +174,17 @@ export async function down(manifest: string, namespace: string, kubeconfig: stri
   disposeTerminal();
   const cmd = `${getBinary()} down --file ${manifest} --namespace ${namespace}`;
   console.log(cmd);
-  const r = await execa.command(cmd, {env: {"KUBECONFIG": kubeconfig}});
+  
+  const r = await execa.command(cmd, {
+    env: {"KUBECONFIG": kubeconfig}, 
+    shell: true});
+
   if (r.failed) {
     console.error(`okteto down failed: ${r.stdout} ${r.stderr}`);
     throw new Error(r.stdout);
   }
+
+  console.log('okteto down finished');
 }
 
 export function getStateMessages(): Map<string, string> {
@@ -338,6 +349,7 @@ export function getLanguages(): RuntimeItem[] {
 export async function init(manifestPath: vscode.Uri, choice: string) {
   const r = await execa.command(`${getBinary()} init --overwrite --file=${manifestPath.fsPath}`, {
     cwd: path.dirname(manifestPath.fsPath),
+    shell: true,
     env: {
       "OKTETO_ORIGIN":"vscode",
       "OKTETO_LANGUAGE":choice
